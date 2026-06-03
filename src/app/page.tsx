@@ -1,8 +1,9 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
-import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useMemo, useEffect } from "react";
+import { collection, query, orderBy } from "firebase/firestore";
+import { useFirestore, useUser, useCollection } from "@/firebase";
 import { Expense, FamilyMember } from "@/app/lib/types";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,30 +12,28 @@ import { Wallet, TrendingUp, Users as UsersIcon, PlusCircle } from "lucide-react
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { format } from "date-fns";
+import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
-  const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, loading: authLoading } = useUser();
+  const firestore = useFirestore();
+  const router = useRouter();
+
+  const membersQuery = useMemo(() => query(collection(firestore, "members"), orderBy("name")), [firestore]);
+  const expensesQuery = useMemo(() => query(collection(firestore, "expenses"), orderBy("date", "desc")), [firestore]);
+
+  const { data: members, loading: membersLoading } = useCollection<FamilyMember>(membersQuery);
+  const { data: expenses, loading: expensesLoading } = useCollection<Expense>(expensesQuery);
 
   useEffect(() => {
-    const qMembers = query(collection(db, "members"), orderBy("name"));
-    const qExpenses = query(collection(db, "expenses"), orderBy("date", "desc"));
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
 
-    const unsubMembers = onSnapshot(qMembers, (snapshot) => {
-      setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FamilyMember)));
-    });
-
-    const unsubExpenses = onSnapshot(qExpenses, (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-      setLoading(false);
-    });
-
-    return () => {
-      unsubMembers();
-      unsubExpenses();
-    };
-  }, []);
+  if (authLoading || !user) {
+    return <div className="flex items-center justify-center min-h-screen">Securing gateway...</div>;
+  }
 
   const totalExpense = expenses.reduce((acc, curr) => acc + curr.amount, 0);
   const currentMonthExpenses = expenses.filter(e => {
@@ -113,7 +112,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {expenses.length === 0 && !loading && (
+            {expenses.length === 0 && !expensesLoading && (
               <div className="text-center py-10 text-muted-foreground italic">
                 No records yet. Start by adding a member.
               </div>

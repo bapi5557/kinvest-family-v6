@@ -1,0 +1,43 @@
+
+{
+  "entities": {
+    "FamilyMember": {
+      "title": "Family Member",
+      "description": "A member of the family tracking expenses.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "relationship": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "relationship", "createdAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "An expense recorded by a family member.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "category": { "type": "string", "enum": ["Electric Bill", "LPG Cylinder", "House Rent", "Groceries", "Medical", "Education", "Other Expenses"] },
+        "amount": { "type": "number" },
+        "note": { "type": "string" },
+        "date": { "type": "number" }
+      },
+      "required": ["memberId", "amount", "category", "date"]
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "FamilyMember",
+      "description": "Collection of family members."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Collection of all expenses."
+    }
+  }
+}
