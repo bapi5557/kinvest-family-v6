@@ -8,9 +8,10 @@ import { useAuth } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Wallet } from 'lucide-react';
+import { Wallet, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { firebaseConfig } from '@/firebase/config';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -21,10 +22,20 @@ export default function RegisterPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  const isConfigDummy = firebaseConfig.apiKey === 'dummy-api-key';
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Client-side validations
+    if (isConfigDummy) {
+      toast({
+        title: "Configuration Error",
+        description: "Firebase is using placeholder credentials. Please connect a real Firebase project.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (password.length < 6) {
       toast({
         title: "Weak Password",
@@ -54,16 +65,18 @@ export default function RegisterPage() {
         router.push('/');
       }
     } catch (error: any) {
-      let message = "An unexpected error occurred.";
+      console.error("Registration Error Details:", error);
+      
+      let message = error.message || "An unexpected error occurred.";
       
       if (error.code === 'auth/email-already-in-use') {
         message = "This email is already registered.";
       } else if (error.code === 'auth/invalid-email') {
         message = "Please enter a valid email address.";
       } else if (error.code === 'auth/operation-not-allowed') {
-        message = "Email/password registration is not enabled.";
-      } else {
-        message = error.message;
+        message = "Email/password registration is not enabled in the Firebase Console.";
+      } else if (error.code === 'auth/network-request-failed') {
+        message = "Network error. Please check your connection.";
       }
 
       toast({
@@ -85,6 +98,16 @@ export default function RegisterPage() {
         <h1 className="text-3xl font-headline font-bold text-foreground mt-4">Kincash</h1>
         <p className="text-muted-foreground uppercase tracking-widest text-xs font-semibold">Join the Financial Hub</p>
       </div>
+
+      {isConfigDummy && (
+        <div className="max-w-md w-full mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start gap-3 text-destructive">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div className="text-xs">
+            <p className="font-bold uppercase mb-1">Dummy Config Detected</p>
+            <p>The app is running with placeholder Firebase keys. Registration will fail until you provide a valid Firebase configuration.</p>
+          </div>
+        </div>
+      )}
 
       <Card className="w-full max-w-md glass-card border-none">
         <CardHeader>
