@@ -8,7 +8,7 @@ import { useAuth } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Wallet, UserPlus } from 'lucide-react';
+import { Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
@@ -23,6 +23,17 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Client-side validations
+    if (password.length < 6) {
+      toast({
+        title: "Weak Password",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (password !== confirmPassword) {
       toast({
         title: "Registration Error",
@@ -31,14 +42,33 @@ export default function RegisterPage() {
       });
       return;
     }
+
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      router.push('/');
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      if (userCredential.user) {
+        toast({
+          title: "Success!",
+          description: "Your family registry has been created.",
+        });
+        router.push('/');
+      }
     } catch (error: any) {
+      let message = "An unexpected error occurred.";
+      
+      if (error.code === 'auth/email-already-in-use') {
+        message = "This email is already registered.";
+      } else if (error.code === 'auth/invalid-email') {
+        message = "Please enter a valid email address.";
+      } else if (error.code === 'auth/operation-not-allowed') {
+        message = "Email/password registration is not enabled.";
+      } else {
+        message = error.message;
+      }
+
       toast({
         title: "Registration Failed",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -75,7 +105,7 @@ export default function RegisterPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase text-muted-foreground">PIN / Password</label>
+              <label className="text-xs font-semibold uppercase text-muted-foreground">PIN / Password (min 6 chars)</label>
               <Input
                 type="password"
                 placeholder="••••••••"
