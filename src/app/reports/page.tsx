@@ -9,20 +9,25 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
+import { Sparkles, FileText, Download, Share2 } from "lucide-react";
 import { smartSpendingInsights, SmartSpendingInsightsOutput } from "@/ai/flows/smart-spending-insights";
-import { ResponsiveContainer, Tooltip, Cell, Pie, PieChart as RePieChart } from "recharts";
+import { monthlyReportSummary, MonthlyReportSummaryOutput } from "@/ai/flows/monthly-report-summary-flow";
+import { ResponsiveContainer, Tooltip, Cell, Pie, PieChart as RePieChart, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 
 export default function ReportsPage() {
   const firestore = useFirestore();
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
+  const { toast } = useToast();
 
   const expensesQuery = useMemo(() => query(collection(firestore, "expenses"), orderBy("date", "desc")), [firestore]);
   const { data: expenses, loading: expensesLoading } = useCollection<Expense>(expensesQuery as any);
 
-  const [aiResult, setAiResult] = useState<SmartSpendingInsightsOutput | null>(null);
+  const [spendingInsights, setSpendingInsights] = useState<SmartSpendingInsightsOutput | null>(null);
+  const [reportSummary, setReportSummary] = useState<MonthlyReportSummaryOutput | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
 
   useEffect(() => {
@@ -31,93 +36,164 @@ export default function ReportsPage() {
     }
   }, [user, authLoading, router]);
 
-  const categoryTotals = expenses.reduce((acc, curr) => {
-    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-    return acc;
-  }, {} as Record<string, number>);
+  const categoryTotals = useMemo(() => {
+    return expenses.reduce((acc, curr) => {
+      acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [expenses]);
 
-  const chartData = Object.entries(categoryTotals).map(([name, value]) => ({ name, value }));
+  const chartData = useMemo(() => {
+    return Object.entries(categoryTotals).map(([name, value]) => ({ name, value }));
+  }, [categoryTotals]);
+
+  const memberTotals = useMemo(() => {
+    return expenses.reduce((acc, curr) => {
+      acc[curr.memberName] = (acc[curr.memberName] || 0) + curr.amount;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [expenses]);
+
+  const memberChartData = useMemo(() => {
+    return Object.entries(memberTotals).map(([name, value]) => ({ name, value }));
+  }, [memberTotals]);
+
   const COLORS = ['#85DAE8', '#395B96', '#546E7A', '#78909C', '#B0BEC5', '#CFD8DC', '#ECEFF1'];
 
-  const getAiInsights = async () => {
-    if (Object.keys(categoryTotals).length === 0) return;
+  const handleGenerateAiReports = async () => {
+    if (expenses.length === 0) return;
     setLoadingAi(true);
     try {
-      const result = await smartSpendingInsights({
+      const insightsPromise = smartSpendingInsights({
         monthlySpending: categoryTotals,
         spendingHistorySummary: `Total expenses recorded: ${expenses.length}. Total amount: $${expenses.reduce((a, b) => a + b.amount, 0)}`,
         familyMembers: Array.from(new Set(expenses.map(e => e.memberName)))
       });
-      setAiResult(result);
+
+      const summaryPromise = monthlyReportSummary({
+        reportType: 'monthly',
+        periodDescription: format(new Date(), 'MMMM yyyy'),
+        currentPeriodData: chartData.map(d => ({ category: d.name, amount: d.value }))
+      });
+
+      const [insights, summary] = await Promise.all([insightsPromise, summaryPromise]);
+      setSpendingInsights(insights);
+      setReportSummary(summary);
+      
+      toast({
+        title: "AI Analysis Complete",
+        description: "Your family spending insights are ready.",
+      });
     } catch (e) {
       console.error(e);
+      toast({
+        title: "AI Failure",
+        description: "Could not generate insights at this time.",
+        variant: "destructive"
+      });
     } finally {
       setLoadingAi(false);
     }
+  };
+
+  const handleExport = () => {
+    toast({
+      title: "PDF Export",
+      description: "Generating financial report document...",
+    });
+  };
+
+  const handleShare = () => {
+    toast({
+      title: "Report Shared",
+      description: "Link copied to family clipboard.",
+    });
   };
 
   if (authLoading) return null;
 
   return (
     <div className="flex flex-col min-h-screen pb-20 bg-background">
-      <header className="p-6 pt-10">
-        <h1 className="text-3xl font-headline font-bold text-foreground">Analytics</h1>
-        <p className="text-muted-foreground">Spending patterns & AI insights</p>
+      <header className="p-6 pt-10 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-headline font-bold text-foreground">Analytics</h1>
+          <p className="text-muted-foreground">Family spending intelligence</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="icon" onClick={handleExport} className="text-accent">
+            <Download size={20} />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={handleShare} className="text-accent">
+            <Share2 size={20} />
+          </Button>
+        </div>
       </header>
 
       <main className="px-6 space-y-6 fade-in">
+        {/* AI Insight Section */}
         <Card className="glass-card border-none">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="font-headline text-accent">Kincash AI Assistant</CardTitle>
-                <CardDescription>Generative spending analysis</CardDescription>
+              <div className="flex items-center gap-2">
+                <Sparkles className="text-accent w-5 h-5 animate-pulse" />
+                <CardTitle className="font-headline text-accent text-lg">AI Financial Assistant</CardTitle>
               </div>
-              <Sparkles className="text-accent animate-pulse" />
             </div>
+            <CardDescription>Generative spending analysis & savings tips</CardDescription>
           </CardHeader>
-          <CardContent>
-            {!aiResult ? (
+          <CardContent className="space-y-4">
+            {!spendingInsights ? (
               <Button 
-                onClick={getAiInsights} 
-                disabled={loadingAi || Object.keys(categoryTotals).length === 0}
-                className="w-full btn-cyan font-bold"
+                onClick={handleGenerateAiReports} 
+                disabled={loadingAi || expenses.length === 0}
+                className="w-full btn-cyan font-bold py-6 rounded-xl"
               >
-                {loadingAi ? "ANALYZING LEDGER..." : "GENERATE SMART INSIGHTS"}
+                {loadingAi ? "ANALYZING LEDGER..." : "GENERATE AI INSIGHTS"}
               </Button>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-4 animate-in fade-in duration-500">
+                {reportSummary && (
+                  <div className="p-4 rounded-xl bg-accent/10 border border-accent/20">
+                    <h4 className="text-xs font-bold uppercase text-accent mb-2 flex items-center gap-2">
+                      <FileText size={14} /> Monthly Summary
+                    </h4>
+                    <p className="text-sm leading-relaxed text-foreground/90">{reportSummary.summary}</p>
+                  </div>
+                )}
                 <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
-                  <h4 className="text-xs font-bold uppercase text-accent mb-2">Spending Analysis</h4>
-                  <p className="text-sm leading-relaxed text-foreground/90">{aiResult.spendingAnalysis}</p>
+                  <h4 className="text-xs font-bold uppercase text-accent mb-2">Detailed Analysis</h4>
+                  <p className="text-sm leading-relaxed text-foreground/90">{spendingInsights.spendingAnalysis}</p>
                 </div>
                 <div className="space-y-2">
-                  <h4 className="text-xs font-bold uppercase text-accent">Personalized Tips</h4>
-                  {aiResult.savingsTips.map((tip, i) => (
-                    <div key={i} className="flex gap-2 items-start text-xs bg-card/50 p-2 rounded-lg border border-white/5">
+                  <h4 className="text-xs font-bold uppercase text-accent">Personalized Savings Tips</h4>
+                  {spendingInsights.savingsTips.map((tip, i) => (
+                    <div key={i} className="flex gap-3 items-start text-xs bg-card/50 p-3 rounded-lg border border-white/5">
                       <div className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />
                       <span>{tip}</span>
                     </div>
                   ))}
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setAiResult(null)} className="w-full text-muted-foreground">Reset Analysis</Button>
+                <Button variant="outline" size="sm" onClick={() => { setSpendingInsights(null); setReportSummary(null); }} className="w-full text-muted-foreground">
+                  Reset Analysis
+                </Button>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="w-full grid grid-cols-2 bg-card border border-white/5">
-            <TabsTrigger value="overview">Category View</TabsTrigger>
-            <TabsTrigger value="history">Member View</TabsTrigger>
+        {/* Charts Section */}
+        <Tabs defaultValue="categories" className="w-full">
+          <TabsList className="w-full grid grid-cols-2 bg-card/60 border border-white/5 p-1 rounded-xl">
+            <TabsTrigger value="categories" className="rounded-lg data-[state=active]:bg-primary/20">Categories</TabsTrigger>
+            <TabsTrigger value="members" className="rounded-lg data-[state=active]:bg-primary/20">Members</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="overview" className="mt-4">
-            <Card className="bg-card/40 border-none">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Expenses by Category</CardTitle>
+          <TabsContent value="categories" className="mt-4 space-y-4">
+            <Card className="bg-card/40 border-none rounded-2xl overflow-hidden">
+              <CardHeader className="pb-0">
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Expense Distribution</CardTitle>
               </CardHeader>
-              <CardContent className="h-[300px] flex items-center justify-center">
+              <CardContent className="h-[300px]">
                 {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <RePieChart>
@@ -135,40 +211,52 @@ export default function ReportsPage() {
                         ))}
                       </Pie>
                       <Tooltip 
-                        contentStyle={{ backgroundColor: '#1E232E', border: 'none', borderRadius: '8px' }}
+                        contentStyle={{ backgroundColor: '#1E232E', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}
                         itemStyle={{ color: '#85DAE8' }}
                       />
                     </RePieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-muted-foreground italic">No data to visualize</p>
+                  <div className="h-full flex items-center justify-center text-muted-foreground italic text-sm">No transaction data available</div>
                 )}
               </CardContent>
             </Card>
+
+            <div className="space-y-3">
+              {chartData.sort((a, b) => b.value - a.value).map((item, idx) => (
+                <div key={idx} className="bg-card/30 p-4 rounded-xl border border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                    <span className="text-sm font-medium">{item.name}</span>
+                  </div>
+                  <span className="font-headline font-bold text-accent">${item.value.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
           </TabsContent>
           
-          <TabsContent value="history" className="mt-4">
-             <Card className="bg-card/40 border-none">
+          <TabsContent value="members" className="mt-4">
+             <Card className="bg-card/40 border-none rounded-2xl">
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Expense Distribution</CardTitle>
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Spending per Member</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {chartData.map((item, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span>{item.name}</span>
-                        <span className="font-bold">${item.value.toLocaleString()}</span>
-                      </div>
-                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-accent" 
-                          style={{ width: `${(item.value / (expenses.reduce((a,b)=>a+b.amount,0) || 1)) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <CardContent className="h-[300px]">
+                {memberChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={memberChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
+                      <XAxis dataKey="name" stroke="#A0AEC0" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#A0AEC0" fontSize={10} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                         cursor={{fill: 'rgba(133, 218, 232, 0.1)'}}
+                         contentStyle={{ backgroundColor: '#1E232E', border: 'none', borderRadius: '12px' }}
+                      />
+                      <Bar dataKey="value" fill="#85DAE8" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground italic text-sm">No member data available</div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

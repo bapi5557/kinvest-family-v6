@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "FamilyMember": {
@@ -42,15 +43,15 @@
   },
   "firestore": {
     "/families/{familyId}": {
-      "schema": "Family",
+      "schema": { "$ref": "#/backend/entities/Family" },
       "description": "Global family settings and metadata."
     },
     "/members/{memberId}": {
-      "schema": "FamilyMember",
+      "schema": { "$ref": "#/backend/entities/FamilyMember" },
       "description": "Collection of family members."
     },
     "/expenses/{expenseId}": {
-      "schema": "Expense",
+      "schema": { "$ref": "#/backend/entities/Expense" },
       "description": "Collection of all expenses."
     }
   }

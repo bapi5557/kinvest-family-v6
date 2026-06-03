@@ -1,3 +1,4 @@
+
 export type ExpenseCategory = 
   | 'Electric Bill' 
   | 'LPG Cylinder' 
@@ -11,7 +12,6 @@ export interface FamilyMember {
   id: string;
   name: string;
   relationship: string;
-  avatarUrl?: string;
   createdAt: number;
 }
 
@@ -25,8 +25,9 @@ export interface Expense {
   date: number; // timestamp
 }
 
-export interface FamilySettings {
+export interface Family {
+  id: string;
   familyName: string;
+  adminEmail: string;
   currency: string;
-  darkMode: boolean;
 }
